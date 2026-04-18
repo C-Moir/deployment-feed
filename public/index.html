@@ -3,80 +3,112 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>vercel-feed</title>
+  <title>deploy-feed</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0a0a0f; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
+
     #stats-bar {
       position: sticky; top: 0; z-index: 100; background: #111118;
-      border-bottom: 1px solid #222; padding: 12px 20px;
-      display: flex; gap: 24px; align-items: center; flex-wrap: wrap;
+      border-bottom: 1px solid #222; padding: 10px 20px;
+      display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
     }
     .stat { font-size: 13px; color: #888; }
     .stat span { color: #6c63ff; font-weight: 600; }
-    #leaderboard { display: flex; gap: 8px; flex-wrap: wrap; }
+    #leaderboard { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
     .leader-chip {
       background: #1a1a2e; border: 1px solid #333; border-radius: 12px;
-      padding: 2px 10px; font-size: 12px; color: #aaa;
+      padding: 2px 9px; font-size: 11px; color: #aaa;
     }
+
     #filters {
-      padding: 12px 20px; display: flex; gap: 10px; flex-wrap: wrap;
+      padding: 10px 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
       background: #0d0d18; border-bottom: 1px solid #1a1a2e;
     }
     .filter-btn {
       background: #1a1a2e; border: 1px solid #333; color: #aaa;
-      padding: 4px 14px; border-radius: 20px; cursor: pointer; font-size: 13px;
-      text-decoration: none;
+      padding: 4px 13px; border-radius: 20px; cursor: pointer; font-size: 12px;
+      text-decoration: none; white-space: nowrap;
     }
     .filter-btn.active { border-color: #6c63ff; color: #6c63ff; }
+    .filter-sep { width: 1px; height: 18px; background: #222; flex-shrink: 0; }
     #search {
       background: #1a1a2e; border: 1px solid #333; color: #e0e0e0;
-      padding: 4px 12px; border-radius: 20px; font-size: 13px; width: 200px;
+      padding: 4px 12px; border-radius: 20px; font-size: 12px;
+      width: 180px; outline: none;
     }
+    #search:focus { border-color: #6c63ff; }
+
     #feed {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 16px; padding: 20px;
     }
+
     .card {
       background: #111118; border: 1px solid #222; border-radius: 8px;
       overflow: hidden; animation: slideIn 0.3s ease-out;
     }
-    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; } }
-    .card.flagged { border-color: #ff4444; }
-    .card.suspicious { border-color: #ff8c00; }
-    .card-preview { width: 100%; height: 160px; object-fit: cover; background: #1a1a2e; display: block; }
-    .card-body { padding: 12px; }
-    .card-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
-    .card-title {
-      font-size: 14px; font-weight: 600; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; } }
+    .card.flagged   { border-color: #7a1a1a; }
+    .card.suspicious{ border-color: #7a4a00; }
+
+    .card-preview {
+      width: 100%; height: 160px; object-fit: cover;
+      background: #1a1a2e; display: block;
     }
-    .badges { display: flex; gap: 4px; flex-wrap: wrap; }
+    .card-preview-placeholder {
+      width: 100%; height: 160px; background: #1a1a2e;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; color: #333; font-family: monospace;
+    }
+
+    .card-body { padding: 12px; }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; }
+    .card-title {
+      font-size: 13px; font-weight: 600; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    }
+    .badges { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
     .badge {
       font-size: 10px; padding: 2px 6px; border-radius: 10px; border: 1px solid #333;
+      white-space: nowrap;
     }
-    .badge.clean { background: #002200; color: #4caf50; border-color: #004400; }
+    .badge.clean      { background: #002200; color: #4caf50; border-color: #004400; }
     .badge.suspicious { background: #2a1a00; color: #ff8c00; border-color: #4a2a00; }
-    .badge.flagged { background: #2a0000; color: #ff4444; border-color: #4a0000; }
-    .badge.scanning { background: #1a1a1a; color: #666; }
-    .badge.framework { background: #1a1a2e; color: #6c63ff; }
-    .badge.ai-tool { background: #1a002e; color: #c084fc; border-color: #4a0072; }
-    .card-desc { font-size: 12px; color: #666; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .card-footer { display: flex; justify-content: space-between; }
-    .card-host { font-size: 11px; color: #555; font-family: monospace; }
-    .card-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .badge.flagged    { background: #2a0000; color: #ff4444; border-color: #4a0000; }
+    .badge.scanning   { background: #1a1a1a; color: #555; border-color: #222; }
+    .badge.s404       { background: #1a1a1a; color: #444; border-color: #222; }
+    .badge.framework  { background: #1a1a2e; color: #6c63ff; border-color: #2a2a4e; }
+    .badge.ai-tool    { background: #1a002e; color: #c084fc; border-color: #3a0060; }
+    .badge.platform   { font-size: 9px; padding: 1px 5px; border-color: #222; color: #555; }
+
+    .card-desc { font-size: 11px; color: #555; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-host { font-size: 10px; color: #444; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; }
+
+    .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .action-btn {
       font-size: 11px; padding: 3px 10px; border-radius: 12px;
       border: 1px solid #333; background: #1a1a2e; color: #888;
-      cursor: pointer; text-decoration: none;
+      cursor: pointer; text-decoration: none; white-space: nowrap;
     }
-    .action-btn.report { color: #ff4444; border-color: #4a0000; }
-    .c2-list { margin-top: 8px; font-size: 11px; font-family: monospace; color: #ff6666; }
+    .action-btn:hover { border-color: #6c63ff; color: #6c63ff; }
+    .action-btn.report { color: #ff4444; border-color: #4a0000; background: #1a0000; }
+    .action-btn.urlscan { color: #6c63ff; border-color: #2a2a6e; }
+    .action-btn.warn { color: #ff8c00; border-color: #4a2a00; background: #150f00; }
+
+    .c2-list { margin-top: 8px; font-size: 10px; font-family: monospace; color: #ff6666; word-break: break-all; }
+
     #status-dot {
-      position: fixed; bottom: 20px; right: 20px; background: #1a1a2e;
-      padding: 8px 14px; border-radius: 8px; font-size: 12px;
-      color: #6c63ff; border: 1px solid #333;
+      position: fixed; bottom: 20px; right: 20px; background: #111118;
+      padding: 7px 13px; border-radius: 8px; font-size: 12px;
+      color: #6c63ff; border: 1px solid #333; z-index: 200;
     }
+
+    #empty-state {
+      padding: 80px 20px; text-align: center; color: #333; font-size: 14px;
+    }
+    #empty-state small { display: block; margin-top: 8px; font-size: 12px; color: #222; }
   </style>
 </head>
 <body>
@@ -94,30 +126,29 @@
   <button class="filter-btn" data-filter="suspicious">Suspicious</button>
   <button class="filter-btn" data-filter="flagged">Flagged</button>
   <button class="filter-btn" data-filter="404">404</button>
-  <input id="search" type="text" placeholder="Search...">
+  <div class="filter-sep"></div>
+  <input id="search" type="text" placeholder="Search hostname, title, platform...">
+  <div class="filter-sep"></div>
   <a href="/rss" class="filter-btn" target="_blank" rel="noopener">RSS</a>
   <a href="/history" class="filter-btn">History</a>
 </div>
 
 <div id="feed"></div>
+<div id="empty-state" style="display:none">
+  Waiting for new deployments...
+  <small>Live feed starts empty — cards appear as new certs are issued</small>
+</div>
 <div id="status-dot">Connecting...</div>
 
 <script>
-// All user-data is set via textContent or setAttribute - no innerHTML with external data
 const entries = new Map();
 let activeFilter = 'all';
 let searchQuery = '';
 
-function esc(str) {
-  const d = document.createElement('div');
-  d.textContent = str || '';
-  return d.innerHTML;
-}
-
-function el(tag, attrs = {}, text = '') {
+function el(tag, attrs, text) {
   const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  if (text) e.textContent = text;
+  if (attrs) for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
   return e;
 }
 
@@ -125,73 +156,96 @@ function badge(text, cls) {
   return el('span', { class: `badge ${cls}` }, text);
 }
 
+function statusClass(status) {
+  if (status === '404') return 's404';
+  return status; // clean, suspicious, flagged, scanning
+}
+
 function buildCard(entry) {
   const card = el('div', {
-    class: `card ${entry.status}`,
+    class: `card ${entry.status === '404' ? '' : entry.status}`,
     id: `card-${entry.id}`,
     'data-status': entry.status,
     'data-hostname': entry.hostname,
+    'data-platform': (entry.platform || '').toLowerCase(),
     'data-title': (entry.meta?.title || '').toLowerCase()
   });
 
-  // Preview image
-  if (entry.screenshot) {
-    const img = el('img', { class: 'card-preview', alt: 'preview', loading: 'lazy' });
-    // screenshot is either a data URL we generated or a URLScan URL - both safe to use as src
-    img.setAttribute('src', entry.screenshot);
+  // Screenshot — only show for non-flagged or if it's a URLScan URL (sandboxed)
+  // Never auto-render screenshots of flagged sites from Playwright (those visited the live site)
+  const showScreenshot = entry.screenshot && (
+    entry.status !== 'flagged' ||
+    entry.screenshotSource === 'urlscan'
+  );
+
+  if (showScreenshot) {
+    const img = el('img', { class: 'card-preview', alt: '', loading: 'lazy' });
+    img.src = entry.screenshot;
     card.appendChild(img);
+  } else if (entry.status === 'flagged') {
+    const ph = el('div', { class: 'card-preview-placeholder' });
+    ph.textContent = '⚠ flagged — preview blocked';
+    card.appendChild(ph);
   } else {
-    card.appendChild(el('div', { class: 'card-preview' }));
+    card.appendChild(el('div', { class: 'card-preview-placeholder' }, entry.status === 'scanning' ? 'scanning...' : ''));
   }
 
   const body = el('div', { class: 'card-body' });
-
-  // Header
   const header = el('div', { class: 'card-header' });
+
   const title = el('div', { class: 'card-title' });
   title.textContent = entry.meta?.title || entry.hostname;
   header.appendChild(title);
 
   const badges = el('div', { class: 'badges' });
-  badges.appendChild(badge(entry.status, entry.status));
+  badges.appendChild(badge(entry.status, statusClass(entry.status)));
+  if (entry.platform) badges.appendChild(badge(entry.platform, 'platform'));
   if (entry.framework) badges.appendChild(badge(entry.framework, 'framework'));
   if (entry.aiTool) badges.appendChild(badge(entry.aiTool, 'ai-tool'));
   header.appendChild(badges);
   body.appendChild(header);
 
-  // Description
   if (entry.meta?.description) {
     body.appendChild(el('div', { class: 'card-desc' }, entry.meta.description));
   }
 
-  // Footer
   const footer = el('div', { class: 'card-footer' });
   footer.appendChild(el('span', { class: 'card-host' }, entry.hostname));
   body.appendChild(footer);
 
-  // C2 IPs
   if (entry.threatIntel?.c2Ips?.length) {
-    body.appendChild(el('div', { class: 'c2-list' }, 'C2: ' + entry.threatIntel.c2Ips.join(', ')));
+    body.appendChild(el('div', { class: 'c2-list' }, 'C2 IPs: ' + entry.threatIntel.c2Ips.join(', ')));
   }
 
-  // Actions
   const actions = el('div', { class: 'card-actions' });
-  if (entry.scan?.urlscanId) {
-    const openBtn = el('a', {
+
+  if (entry.status === 'flagged' || entry.status === 'suspicious') {
+    // Unsafe sites: only link to the URLScan sandbox result, never directly
+    if (entry.scan?.urlscanId) {
+      actions.appendChild(el('a', {
+        class: 'action-btn urlscan',
+        href: `https://urlscan.io/result/${entry.scan.urlscanId}/`,
+        target: '_blank', rel: 'noopener noreferrer'
+      }, 'View on URLScan'));
+    }
+  } else if (entry.scan?.urlscanId) {
+    // Clean sites: offer both the direct link and URLScan report
+    actions.appendChild(el('a', {
       class: 'action-btn',
+      href: entry.url,
+      target: '_blank', rel: 'noopener noreferrer'
+    }, 'Visit site'));
+    actions.appendChild(el('a', {
+      class: 'action-btn urlscan',
       href: `https://urlscan.io/result/${entry.scan.urlscanId}/`,
-      target: '_blank',
-      rel: 'noopener noreferrer'
-    }, 'Open safely');
-    actions.appendChild(openBtn);
+      target: '_blank', rel: 'noopener noreferrer'
+    }, 'URLScan'));
   }
+
   if (entry.mailtoLink) {
-    const reportBtn = el('a', {
-      class: 'action-btn report',
-      href: entry.mailtoLink
-    }, 'Report to Vercel');
-    actions.appendChild(reportBtn);
+    actions.appendChild(el('a', { class: 'action-btn report', href: entry.mailtoLink }, 'Report abuse'));
   }
+
   body.appendChild(actions);
   card.appendChild(body);
   return card;
@@ -202,28 +256,36 @@ function upsertCard(entry) {
   const existing = document.getElementById(`card-${entry.id}`);
   const card = buildCard(entry);
   const feed = document.getElementById('feed');
+  const emptyState = document.getElementById('empty-state');
 
   if (existing) {
     existing.replaceWith(card);
   } else {
     feed.prepend(card);
-    // Prune oldest cards above 200
-    const cards = feed.querySelectorAll('.card');
-    if (cards.length > 200) cards[cards.length - 1].remove();
+    emptyState.style.display = 'none';
   }
   applyFilters();
 }
 
 function applyFilters() {
+  let visible = 0;
   document.querySelectorAll('.card').forEach(card => {
+    const s = card.dataset.status;
     const matchFilter = activeFilter === 'all'
-      ? card.dataset.status !== '404'
-      : card.dataset.status === activeFilter;
+      ? s !== '404'
+      : s === activeFilter;
     const matchSearch = !searchQuery
       || card.dataset.hostname.includes(searchQuery)
-      || card.dataset.title.includes(searchQuery);
-    card.style.display = matchFilter && matchSearch ? '' : 'none';
+      || card.dataset.title.includes(searchQuery)
+      || card.dataset.platform.includes(searchQuery);
+    const show = matchFilter && matchSearch;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
+
+  const emptyState = document.getElementById('empty-state');
+  const feed = document.getElementById('feed');
+  emptyState.style.display = (visible === 0 && feed.children.length === 0) ? '' : 'none';
 }
 
 function renderStats(stats) {
@@ -243,7 +305,6 @@ function renderStats(stats) {
     });
 }
 
-// Filters
 document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
@@ -258,7 +319,6 @@ document.getElementById('search').addEventListener('input', e => {
   applyFilters();
 });
 
-// SSE
 function connect() {
   const es = new EventSource('/events');
   const dot = document.getElementById('status-dot');
@@ -275,6 +335,8 @@ function connect() {
   });
 }
 
+// Show empty state on initial load
+document.getElementById('empty-state').style.display = '';
 connect();
 </script>
 </body>

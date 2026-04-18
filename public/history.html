@@ -34,6 +34,8 @@
 
   .ts { color: #444; min-width: 130px; font-size: 11px; }
 
+  .platform { color: #444; min-width: 70px; font-size: 11px; }
+
   .hostname {
     color: #a0a0cc; flex: 1; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
@@ -127,6 +129,10 @@ function buildRow(entry) {
   ts.className = 'ts';
   ts.textContent = formatTs(entry.timestamp);
 
+  const plt = document.createElement('span');
+  plt.className = 'platform';
+  plt.textContent = entry.platform || '';
+
   const hn = document.createElement('span');
   hn.className = 'hostname';
   const a = document.createElement('a');
@@ -145,6 +151,7 @@ function buildRow(entry) {
   badge.textContent = entry.status;
 
   row.appendChild(ts);
+  row.appendChild(plt);
   row.appendChild(hn);
   row.appendChild(title);
   row.appendChild(badge);
