@@ -121,7 +121,8 @@
 </div>
 
 <div id="filters">
-  <button class="filter-btn active" data-filter="all">All</button>
+  <button class="filter-btn active" data-filter="previews">Previews</button>
+  <button class="filter-btn" data-filter="all">All</button>
   <button class="filter-btn" data-filter="clean">Clean</button>
   <button class="filter-btn" data-filter="suspicious">Suspicious</button>
   <button class="filter-btn" data-filter="flagged">Flagged</button>
@@ -131,6 +132,7 @@
   <div class="filter-sep"></div>
   <a href="/rss" class="filter-btn" target="_blank" rel="noopener">RSS</a>
   <a href="/history" class="filter-btn">History</a>
+  <a href="/map" class="filter-btn">3D Map</a>
 </div>
 
 <div id="feed"></div>
@@ -142,7 +144,7 @@
 
 <script>
 const entries = new Map();
-let activeFilter = 'all';
+let activeFilter = 'previews';
 let searchQuery = '';
 
 function el(tag, attrs, text) {
@@ -168,7 +170,8 @@ function buildCard(entry) {
     'data-status': entry.status,
     'data-hostname': entry.hostname,
     'data-platform': (entry.platform || '').toLowerCase(),
-    'data-title': (entry.meta?.title || '').toLowerCase()
+    'data-title': (entry.meta?.title || '').toLowerCase(),
+    'data-has-screenshot': entry.screenshot ? '1' : '0'
   });
 
   // Screenshot — only show for non-flagged or if it's a URLScan URL (sandboxed)
@@ -271,9 +274,10 @@ function applyFilters() {
   let visible = 0;
   document.querySelectorAll('.card').forEach(card => {
     const s = card.dataset.status;
-    const matchFilter = activeFilter === 'all'
-      ? s !== '404'
-      : s === activeFilter;
+    const matchFilter =
+      activeFilter === 'previews' ? (card.dataset.hasScreenshot === '1' && s !== '404') :
+      activeFilter === 'all'      ? s !== '404' :
+      s === activeFilter;
     const matchSearch = !searchQuery
       || card.dataset.hostname.includes(searchQuery)
       || card.dataset.title.includes(searchQuery)

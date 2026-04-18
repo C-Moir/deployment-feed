@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>deploy-feed — live map</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  canvas { display: block; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 10;
+  }
+
+  #top-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  }
+  #top-bar a {
+    color: #6c63ff; text-decoration: none; font-size: 12px;
+    pointer-events: all;
+  }
+  #top-bar a:hover { text-decoration: underline; }
+  #title { font-size: 14px; color: #888; letter-spacing: 2px; text-transform: uppercase; }
+  #reset-countdown { font-size: 11px; color: #444; }
+
+  #stats-hud {
+    position: absolute; bottom: 24px; left: 20px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-line { font-size: 12px; color: #555; }
+  .stat-line span { color: #6c63ff; }
+
+  #legend {
+    position: absolute; bottom: 24px; right: 20px;
+    display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #555; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  #detail-panel {
+    position: absolute; top: 50%; right: 20px; transform: translateY(-50%);
+    width: 260px; background: rgba(10,10,20,0.92); border: 1px solid #222;
+    border-radius: 10px; padding: 16px; pointer-events: all;
+    display: none; backdrop-filter: blur(8px);
+  }
+  #detail-panel.visible { display: block; }
+  #detail-close {
+    position: absolute; top: 10px; right: 12px; cursor: pointer;
+    color: #555; font-size: 16px; line-height: 1; pointer-events: all;
+  }
+  #detail-close:hover { color: #ccc; }
+  #detail-screenshot {
+    width: 100%; height: 130px; object-fit: cover; border-radius: 6px;
+    background: #111; display: block; margin-bottom: 12px;
+  }
+  #detail-title { font-size: 13px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; word-break: break-word; }
+  #detail-host  { font-size: 10px; color: #555; font-family: monospace; margin-bottom: 10px; word-break: break-all; }
+  .detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .detail-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px; border: 1px solid #333;
+  }
+  .db-clean      { background:#002200; color:#4caf50; border-color:#004400; }
+  .db-suspicious { background:#2a1a00; color:#ff8c00; border-color:#4a2a00; }
+  .db-flagged    { background:#2a0000; color:#ff4444; border-color:#4a0000; }
+  .db-scanning   { background:#111; color:#555; }
+  .db-platform   { background:#1a1a2e; color:#6c63ff; border-color:#2a2a4e; }
+  .db-framework  { background:#1a1a2e; color:#6c63ff; border-color:#2a2a4e; }
+  .detail-actions { display: flex; flex-direction: column; gap: 6px; }
+  .detail-btn {
+    display: block; text-align: center; padding: 6px 12px; border-radius: 8px;
+    font-size: 11px; text-decoration: none; border: 1px solid #333;
+    color: #888; background: #1a1a2e; pointer-events: all;
+  }
+  .detail-btn:hover { border-color: #6c63ff; color: #6c63ff; }
+  .detail-btn.primary { background: #1a1a3e; border-color: #6c63ff; color: #6c63ff; }
+  .detail-btn.danger  { background: #1a0000; border-color: #4a0000; color: #ff4444; }
+
+  #tooltip {
+    position: absolute; background: rgba(0,0,0,0.85); border: 1px solid #222;
+    border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #aaa;
+    pointer-events: none; display: none; max-width: 220px; word-break: break-word;
+  }
+
+  /* CSS2D platform labels */
+  .platform-label {
+    color: #666; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; white-space: nowrap;
+    text-shadow: 0 0 8px rgba(0,0,0,0.9);
+    pointer-events: none; user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="top-bar">
+    <a href="/">← Live feed</a>
+    <span id="title">deploy map</span>
+    <span id="reset-countdown"></span>
+  </div>
+
+  <div id="stats-hud">
+    <div class="stat-line">Seen today: <span id="s-total">0</span></div>
+    <div class="stat-line">Flagged: <span id="s-flagged">0</span></div>
+    <div class="stat-line">Platforms: <span id="s-platforms">12</span></div>
+  </div>
+
+  <div id="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#ff3333"></div>Flagged</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff8c00"></div>Suspicious</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2d8a2d"></div>Clean</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#336699"></div>Scanning</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1e1e2e"></div>Pending / 404</div>
+  </div>
+
+  <div id="detail-panel">
+    <span id="detail-close">✕</span>
+    <img id="detail-screenshot" src="" alt="">
+    <div id="detail-title"></div>
+    <div id="detail-host"></div>
+    <div class="detail-badges" id="detail-badges"></div>
+    <div class="detail-actions" id="detail-actions"></div>
+  </div>
+
+  <div id="tooltip"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PLATFORMS = [
+  { name: 'Vercel',   color: 0xcccccc },
+  { name: 'Netlify',  color: 0x00d4c8 },
+  { name: 'CF Pages', color: 0xf6821f },
+  { name: 'Render',   color: 0x46e3b7 },
+  { name: 'GitHub',   color: 0x9b59b6 },
+  { name: 'Glitch',   color: 0x5555ff },
+  { name: 'Replit',   color: 0xf26207 },
+  { name: 'Surge',    color: 0x6bbe3f },
+  { name: 'Deno',     color: 0x70ffaf },
+  { name: 'Railway',  color: 0xa855f7 },
+  { name: 'Fly.io',   color: 0x7b2bf9 },
+  { name: 'Workers',  color: 0xf6821f },
+];
+
+const STATUS_COLOR = {
+  pending:    0x1a1a2e,
+  scanning:   0x336699,
+  clean:      0x2d8a2d,
+  suspicious: 0xff8c00,
+  flagged:    0xff2222,
+  '404':      0x111111,
+};
+const STATUS_EMISSIVE = {
+  pending:    0x050510,
+  scanning:   0x112233,
+  clean:      0x0a1a0a,
+  suspicious: 0x331a00,
+  flagged:    0x440000,
+  '404':      0x000000,
+};
+const STATUS_SIZE = {
+  pending:    0.18,
+  scanning:   0.22,
+  clean:      0.24,
+  suspicious: 0.34,
+  flagged:    0.48,
+  '404':      0.12,
+};
+
+const CLUSTER_RING_R = 65;
+const CLUSTER_SPREAD = 14;
+
+// ─── Scene setup ─────────────────────────────────────────────────────────────
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x020205);
+document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'fixed';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020205, 0.006);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 40, 120);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 10;
+controls.maxDistance = 280;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.3;
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x111122, 2));
+const dirLight = new THREE.DirectionalLight(0x8888ff, 0.4);
+dirLight.position.set(1, 2, 1);
+scene.add(dirLight);
+
+// Starfield background
+const starGeom = new THREE.BufferGeometry();
+const starCount = 3000;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount * 3; i++) starPos[i] = (Math.random() - 0.5) * 600;
+starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0x334455, size: 0.3, sizeAttenuation: true });
+scene.add(new THREE.Points(starGeom, starMat));
+
+// ─── Platform clusters ────────────────────────────────────────────────────────
+
+const clusterPositions = new Map();
+const clusterLights = [];
+
+PLATFORMS.forEach((p, i) => {
+  const angle = (i / PLATFORMS.length) * Math.PI * 2;
+  const x = Math.cos(angle) * CLUSTER_RING_R;
+  const z = Math.sin(angle) * CLUSTER_RING_R;
+  const y = Math.sin(angle * 2) * 8; // gentle wave in Y
+  const pos = new THREE.Vector3(x, y, z);
+  clusterPositions.set(p.name, pos);
+
+  // Cluster core — dim glowing sphere
+  const coreGeom = new THREE.SphereGeometry(1.5, 16, 16);
+  const coreMat = new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.15 });
+  const core = new THREE.Mesh(coreGeom, coreMat);
+  core.position.copy(pos);
+  scene.add(core);
+
+  // Dim point light at cluster
+  const light = new THREE.PointLight(p.color, 0.6, 30);
+  light.position.copy(pos);
+  scene.add(light);
+  clusterLights.push(light);
+
+  // Platform label
+  const div = document.createElement('div');
+  div.className = 'platform-label';
+  div.textContent = p.name;
+  const label = new CSS2DObject(div);
+  label.position.copy(pos);
+  label.position.y += 4;
+  scene.add(label);
+});
+
+// ─── Shared geometries & materials ───────────────────────────────────────────
+
+const GEOMS = {};
+Object.entries(STATUS_SIZE).forEach(([status, r]) => {
+  GEOMS[status] = new THREE.SphereGeometry(r, 8, 6);
+});
+
+function makeMaterial(status) {
+  return new THREE.MeshPhongMaterial({
+    color: STATUS_COLOR[status],
+    emissive: STATUS_EMISSIVE[status],
+    transparent: true,
+    opacity: status === '404' ? 0.3 : 0.9,
+  });
+}
+const MATS = {};
+Object.keys(STATUS_COLOR).forEach(s => { MATS[s] = makeMaterial(s); });
+
+// ─── Node management ─────────────────────────────────────────────────────────
+
+const nodeMap = new Map(); // id → { mesh, entry, targetPos, age }
+
+function randomInSphere(r) {
+  const u = Math.random(), v = Math.random(), w = Math.random();
+  const theta = Math.PI * 2 * u;
+  const phi = Math.acos(2 * v - 1);
+  const radius = Math.cbrt(w) * r;
+  return new THREE.Vector3(
+    radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.sin(phi) * Math.sin(theta),
+    radius * Math.cos(phi)
+  );
+}
+
+function addOrUpdateNode(entry) {
+  const existing = nodeMap.get(entry.id);
+  if (existing) {
+    // Update material for status change
+    existing.mesh.material = MATS[entry.status] || MATS.pending;
+    existing.mesh.geometry = GEOMS[entry.status] || GEOMS.pending;
+    existing.entry = entry;
+    updateStats();
+    return;
+  }
+
+  const clusterPos = clusterPositions.get(entry.platform) || new THREE.Vector3(0, 0, 0);
+  const targetOffset = randomInSphere(CLUSTER_SPREAD);
+  const targetPos = clusterPos.clone().add(targetOffset);
+
+  const mesh = new THREE.Mesh(
+    GEOMS[entry.status] || GEOMS.pending,
+    MATS[entry.status] || MATS.pending
+  );
+
+  // Spawn at cluster center, animate outward
+  mesh.position.copy(clusterPos);
+  mesh.scale.setScalar(0.01);
+  scene.add(mesh);
+
+  nodeMap.set(entry.id, { mesh, entry, targetPos, age: 0, born: Date.now() });
+  updateStats();
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+function updateStats() {
+  const total = nodeMap.size;
+  const flagged = [...nodeMap.values()].filter(n => n.entry.status === 'flagged').length;
+  document.getElementById('s-total').textContent = total.toLocaleString();
+  document.getElementById('s-flagged').textContent = flagged.toLocaleString();
+}
+
+// ─── 24h reset countdown ─────────────────────────────────────────────────────
+
+const bootTime = Date.now();
+const resetAt = bootTime + 24 * 60 * 60 * 1000;
+
+function updateCountdown() {
+  const left = Math.max(0, resetAt - Date.now());
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  const s = Math.floor((left % 60000) / 1000);
+  document.getElementById('reset-countdown').textContent =
+    `Resets in ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  if (left === 0) resetMap();
+}
+setInterval(updateCountdown, 1000);
+updateCountdown();
+
+function resetMap() {
+  // Fade everything out, clear scene nodes, restart SSE
+  nodeMap.forEach(({ mesh }) => scene.remove(mesh));
+  nodeMap.clear();
+  updateStats();
+}
+
+// ─── Interaction ─────────────────────────────────────────────────────────────
+
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 0.5;
+const mouse = new THREE.Vector2(-9999, -9999);
+const tooltip = document.getElementById('tooltip');
+const detailPanel = document.getElementById('detail-panel');
+let hoveredId = null;
+let selectedId = null;
+
+renderer.domElement.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top  = (e.clientY + 14) + 'px';
+});
+
+renderer.domElement.addEventListener('click', () => {
+  const hit = getHoveredNode();
+  if (hit) showDetail(hit.entry);
+  else hideDetail();
+});
+
+renderer.domElement.addEventListener('mousedown', () => { controls.autoRotate = false; });
+
+document.getElementById('detail-close').addEventListener('click', hideDetail);
+
+function getHoveredNode() {
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = [...nodeMap.values()].map(n => n.mesh);
+  const hits = raycaster.intersectObjects(meshes);
+  if (!hits.length) return null;
+  const hitMesh = hits[0].object;
+  return [...nodeMap.values()].find(n => n.mesh === hitMesh) || null;
+}
+
+function showDetail(entry) {
+  selectedId = entry.id;
+  const panel = document.getElementById('detail-panel');
+
+  const img = document.getElementById('detail-screenshot');
+  if (entry.screenshot) {
+    img.src = entry.screenshot;
+    img.style.display = 'block';
+  } else if (entry.scan?.urlscanId) {
+    img.src = `https://urlscan.io/screenshots/${entry.scan.urlscanId}.png`;
+    img.style.display = 'block';
+  } else {
+    img.style.display = 'none';
+  }
+
+  document.getElementById('detail-title').textContent = entry.meta?.title || entry.hostname;
+  document.getElementById('detail-host').textContent = entry.hostname;
+
+  const badges = document.getElementById('detail-badges');
+  badges.textContent = '';
+  function dbadge(text, cls) {
+    const b = document.createElement('span');
+    b.className = `detail-badge ${cls}`;
+    b.textContent = text;
+    badges.appendChild(b);
+  }
+  dbadge(entry.status, `db-${entry.status}`);
+  if (entry.platform) dbadge(entry.platform, 'db-platform');
+  if (entry.framework) dbadge(entry.framework, 'db-framework');
+
+  const actions = document.getElementById('detail-actions');
+  actions.textContent = '';
+  function dlink(text, href, cls) {
+    const a = document.createElement('a');
+    a.className = `detail-btn ${cls || ''}`;
+    a.textContent = text;
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    actions.appendChild(a);
+  }
+
+  if (entry.status === 'flagged' || entry.status === 'suspicious') {
+    if (entry.scan?.urlscanId)
+      dlink('View on URLScan ↗', `https://urlscan.io/result/${entry.scan.urlscanId}/`, 'danger');
+  } else {
+    dlink('Visit site ↗', entry.url, 'primary');
+    if (entry.scan?.urlscanId)
+      dlink('URLScan report ↗', `https://urlscan.io/result/${entry.scan.urlscanId}/`);
+  }
+
+  panel.classList.add('visible');
+}
+
+function hideDetail() {
+  selectedId = null;
+  document.getElementById('detail-panel').classList.remove('visible');
+}
+
+// ─── SSE feed ────────────────────────────────────────────────────────────────
+
+function connectSSE() {
+  const es = new EventSource('/events');
+  es.onmessage = e => {
+    try { addOrUpdateNode(JSON.parse(e.data)); } catch (_) {}
+  };
+  es.addEventListener('stats', e => {
+    try {
+      const stats = JSON.parse(e.data);
+      document.getElementById('s-total').textContent = stats.totalSeen.toLocaleString();
+      document.getElementById('s-flagged').textContent = stats.flaggedCount.toLocaleString();
+    } catch (_) {}
+  });
+  es.onerror = () => setTimeout(connectSSE, 3000);
+}
+connectSSE();
+
+// ─── Animation loop ───────────────────────────────────────────────────────────
+
+const clock = new THREE.Clock();
+let hoverCheckThrottle = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+
+  // Animate nodes
+  nodeMap.forEach(({ mesh, entry, targetPos, born }) => {
+    // Fly into position
+    const age = (Date.now() - born) / 1000;
+    const lerpSpeed = Math.min(1, age * 2) * 0.08;
+    mesh.position.lerp(targetPos, lerpSpeed);
+
+    // Pop in (scale up from 0)
+    if (mesh.scale.x < 1) {
+      mesh.scale.setScalar(Math.min(1, mesh.scale.x + 0.06));
+    }
+
+    // Gentle float
+    mesh.position.y += Math.sin(t * 0.7 + mesh.position.x * 0.3) * 0.0008;
+
+    // Pulse flagged nodes
+    if (entry.status === 'flagged') {
+      const pulse = 1 + Math.sin(t * 4) * 0.25;
+      mesh.scale.setScalar(pulse);
+      mesh.material.emissiveIntensity = 0.5 + Math.sin(t * 4) * 0.5;
+    }
+
+    // Pulse scanning nodes
+    if (entry.status === 'scanning') {
+      mesh.material.emissiveIntensity = 0.3 + Math.sin(t * 3 + mesh.position.z) * 0.3;
+    }
+  });
+
+  // Animate cluster lights
+  clusterLights.forEach((light, i) => {
+    light.intensity = 0.4 + Math.sin(t * 0.5 + i) * 0.2;
+  });
+
+  // Hover detection (throttled)
+  hoverCheckThrottle += dt;
+  if (hoverCheckThrottle > 0.05) {
+    hoverCheckThrottle = 0;
+    const hit = getHoveredNode();
+    const hitId = hit?.entry.id || null;
+
+    if (hitId !== hoveredId) {
+      hoveredId = hitId;
+      if (hit) {
+        tooltip.style.display = 'block';
+        tooltip.textContent = hit.entry.hostname;
+        renderer.domElement.style.cursor = 'pointer';
+      } else {
+        tooltip.style.display = 'none';
+        renderer.domElement.style.cursor = '';
+      }
+    }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

@@ -182,6 +182,10 @@ app.get('/history', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'history.html'));
 });
 
+app.get('/map', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'map.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`vercel-feed running at http://localhost:${PORT}`);
   if (!URLSCAN_KEY) console.log('[warn] URLSCAN_KEY not set - rate-limited scanning');
