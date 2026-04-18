@@ -3,3 +3,4 @@ node_modules/
 threat-intel.json
 threat-intel-archive-*.json
 .crtsh-state.json
+history.ndjson
