@@ -1,58 +1,78 @@
-# vercel-feed
+# deploy-feed
 
-Live feed of Vercel deployments as they happen - with security scanning, AI tool detection, and crowd-sourced abuse reporting.
+A real-time live ledger of new deployments across 12 free hosting platforms — with security scanning, AI tool detection, a 3D interactive map, and crowd-sourced abuse reporting.
+
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
 ## What it does
 
-- Streams new deployments in real-time via certificate transparency logs
-- Scans for malware (URLhaus + URLScan.io)
-- Detects which AI tool built it (v0, Bolt, Lovable, Cursor, Windsurf)
-- Live AI tool leaderboard
-- Extracts C2 infrastructure from malicious deployments
-- Crowd-sourced abuse reporting to Vercel (requires Upstash)
-- Discord/Slack webhook alerts for flagged deployments
-- RSS feed of flagged deployments
+- **Real-time** - polls Google and Cloudflare Certificate Transparency logs every 10s. New deployments appear within seconds of their TLS cert being issued
+- **12 platforms** - Vercel, Netlify, Cloudflare Pages, Cloudflare Workers, Render, GitHub Pages, Glitch, Replit, Surge, Deno Deploy, Railway, Fly.io
+- **Security scanning** - URLhaus fast check + URLScan.io deep scan. Flagged sites are never directly linked
+- **AI tool detection** - detects v0, Bolt, Lovable, Cursor, Windsurf, Replit Agent and more from page fingerprints
+- **3D galaxy map** - interactive Three.js visualization of deployments as they appear. Each platform is a planet with its own orbital ring of deployments. Click a planet to focus and browse its deployments
+- **History page** - dense log of all seen deployments with hover screenshot preview
+- **Safety first** - flagged and suspicious sites only link to URLScan sandbox results, never the live site
+- **RSS feed** - subscribe to flagged deployments
+- **Webhook alerts** - Discord/Slack notifications for flagged deployments
 
-## Is this legal?
+## Screenshots
 
-Certificate Transparency logs are public infrastructure. Every TLS cert issued globally is logged publicly by design. This tool reads that data. All page content is fetched via URLScan.io's sandboxed environment - the tool never connects to deployment URLs directly.
+| Live feed | 3D Map |
+|-----------|--------|
+| Cards appear as certs are issued | Planets with orbital deployment rings |
 
-## Verify this package
+## How it works
 
-Every release is cryptographically signed via npm provenance attestation:
+Certificate Transparency logs are public infrastructure — every TLS cert issued globally is logged by design. When a new deployment goes live, the platform provisions a cert. That cert hits a CT log within seconds. This tool reads those logs continuously.
 
-    npm audit signatures vercel-feed
-
-This confirms the published package matches the exact GitHub commit it was built from.
+For platforms that issue per-deployment certs (Cloudflare Pages, Workers, Render, Railway, Fly.io, Replit) this gives genuine real-time detection. For platforms using wildcard certs (Vercel, Netlify, GitHub Pages) the feed relies on crt.sh polling when available.
 
 ## Install
 
-    git clone https://github.com/C-Moir/vercel-feed
-    cd vercel-feed
-    npm install
-    node index.js
+```bash
+git clone https://github.com/C-Moir/deploy-feed
+cd deploy-feed
+npm install
+npx playwright install chromium   # for screenshots
+node index.js
+```
 
-Or without cloning:
+Open `http://localhost:3000`
 
-    npx vercel-feed
+## Setup
 
-## Setup (progressive)
+Progressive — each step unlocks more features. Nothing is required to start.
 
-| Step | What it unlocks |
-|------|----------------|
-| node index.js | Live feed, no scanning |
-| URLSCAN_KEY | Real-time scanning (free at urlscan.io) |
-| npx playwright install chromium | Local screenshots |
-| Upstash credentials | Consensus abuse reporting |
-| ABUSEIPDB_KEY | Automatic C2 IP reporting |
-| WEBHOOK_URL | Discord/Slack flagged alerts |
+| What to add | What it unlocks |
+|-------------|----------------|
+| `node index.js` | Live feed with CT log detection |
+| `URLSCAN_KEY` | Full security scanning (free at urlscan.io) |
+| `npx playwright install chromium` | Local screenshots of clean sites |
+| `UPSTASH_REDIS_URL` + `UPSTASH_REDIS_TOKEN` | Consensus abuse reporting |
+| `ABUSEIPDB_KEY` | Automatic C2 IP reporting to AbuseIPDB |
+| `WEBHOOK_URL` | Discord/Slack alerts for flagged deployments |
 
-Copy `.env.example` to `.env` and fill in what you want.
+Copy `.env.example` to `.env` and add what you want.
 
-## RSS
+## Routes
 
-Subscribe to flagged deployments: `http://localhost:3000/rss`
+| Route | Description |
+|-------|-------------|
+| `/` | Live feed with filters |
+| `/map` | 3D interactive galaxy map |
+| `/history` | Full deployment log with hover previews |
+| `/rss` | RSS feed of flagged deployments |
+| `/events` | SSE stream (raw) |
+| `/api/stats` | JSON stats |
+| `/api/history` | JSON history |
+
+## Is this legal?
+
+CT logs are public infrastructure operated by Google, Cloudflare, DigiCert and others. Every TLS cert issued globally is logged publicly by design — this is a security requirement, not optional. This tool reads that data.
+
+Page content is scanned via URLScan.io's sandboxed environment. The tool never directly fetches flagged or suspicious deployment URLs.
 
 ## Contributing
 
-See CONTRIBUTING.md to add AI tool signatures.
+See CONTRIBUTING.md to add AI tool or framework detection signatures.

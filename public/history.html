@@ -115,8 +115,10 @@ function formatTs(ts) {
 }
 
 function screenshotUrl(entry) {
+  if (entry.screenshot) return entry.screenshot;
+  if (entry.scan?.urlscanId) return `https://urlscan.io/screenshots/${entry.scan.urlscanId}.png`;
   if (entry.urlscanId) return `https://urlscan.io/screenshots/${entry.urlscanId}.png`;
-  return `https://api.microlink.io/?url=${encodeURIComponent(entry.url)}&screenshot=true&embed=screenshot.url`;
+  return null;
 }
 
 function buildRow(entry) {
@@ -157,7 +159,13 @@ function buildRow(entry) {
   row.appendChild(badge);
 
   row.addEventListener('mouseenter', (e) => {
-    previewImg.src = screenshotUrl(entry);
+    const src = screenshotUrl(entry);
+    if (src) {
+      previewImg.src = src;
+      previewImg.style.display = 'block';
+    } else {
+      previewImg.style.display = 'none';
+    }
     previewLabel.textContent = entry.hostname;
     positionPreview(e);
     preview.style.display = 'block';
@@ -191,20 +199,34 @@ function applySearch(query) {
 
 searchEl.addEventListener('input', () => applySearch(searchEl.value));
 
-fetch('/api/history')
-  .then(r => r.json())
-  .then(entries => {
-    if (!entries.length) { empty.style.display = ''; return; }
-    const frag = document.createDocumentFragment();
-    for (const entry of entries) {
-      const row = buildRow(entry);
-      allRows.push(row);
-      frag.appendChild(row);
-    }
-    list.appendChild(frag);
-    countEl.textContent = `${entries.length.toLocaleString()} entries`;
-  })
-  .catch(() => { empty.style.display = ''; });
+const seenHostnames = new Set();
+
+function loadHistory() {
+  fetch('/api/history')
+    .then(r => r.json())
+    .then(entries => {
+      empty.style.display = 'none';
+      const frag = document.createDocumentFragment();
+      let added = 0;
+      for (const entry of entries) {
+        if (seenHostnames.has(entry.hostname)) continue;
+        seenHostnames.add(entry.hostname);
+        const row = buildRow(entry);
+        allRows.push(row);
+        frag.appendChild(row);
+        added++;
+      }
+      if (added) {
+        list.prepend(frag);
+        applySearch(searchEl.value);
+      }
+      if (!allRows.length) empty.style.display = '';
+    })
+    .catch(() => { if (!allRows.length) empty.style.display = ''; });
+}
+
+loadHistory();
+setInterval(loadHistory, 30_000);
 </script>
 </body>
 </html>

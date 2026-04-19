@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const { JobQueue } = require('./lib/queue.js');
 const { connect: connectCertstream } = require('./lib/certstream.js');
+
 const { checkUrlhaus, submitUrlscan, pollUrlscan, extractScanData } = require('./lib/scanner.js');
 const { writeEntry, reportToAbuseIPDB } = require('./lib/threat-intel.js');
 const { recordAndCheck, buildMailtoLink } = require('./lib/upstash.js');
@@ -26,6 +27,16 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || null;
 
 const queue = new JobQueue();
 const broadcaster = new Broadcaster();
+
+// Restore recent history into queue so the feed isn't empty after a restart
+{
+  const history = readHistory(200);
+  const toPreload = history.filter(e => e.id && e.status !== 'pending' && e.status !== 'scanning');
+  queue.preload(toPreload);
+  if (toPreload.length) {
+    console.log(`[history] preloaded ${toPreload.length} entries from disk`);
+  }
+}
 
 async function preflight404(url) {
   try {
@@ -174,8 +185,29 @@ app.get('/api/stats', (req, res) => {
   res.json(computeStats(queue.getAll()));
 });
 
+
 app.get('/api/history', (req, res) => {
-  res.json(readHistory(1000));
+  // Merge disk history with completed in-memory entries (newest first, deduped by hostname)
+  const disk = readHistory(1000);
+  const diskHostnames = new Set(disk.map(e => e.hostname));
+  const mem = queue.getAll()
+    .filter(e => !diskHostnames.has(e.hostname) && e.status !== 'pending' && e.status !== 'scanning')
+    .map(e => ({
+      id: e.id,
+      hostname: e.hostname,
+      url: e.url,
+      platform: e.platform,
+      timestamp: e.timestamp,
+      title: e.meta?.title || null,
+      status: e.status,
+      screenshot: e.screenshot || null,
+      screenshotSource: e.screenshotSource || null,
+      scan: e.scan || null,
+    }));
+  const combined = [...mem, ...disk]
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 1000);
+  res.json(combined);
 });
 
 app.get('/history', (req, res) => {
@@ -197,5 +229,9 @@ setInterval(() => {
   const alert = detectTrending(queue.getAll());
   if (alert) console.log(`[trending] ${alert}`);
 }, 10_000);
+
+// Start worker pool - 5 concurrent so the queue doesn't back up
+const WORKER_COUNT = 5;
+for (let i = 0; i < WORKER_COUNT; i++) runWorker();
 
 connectCertstream(queue, (entry) => broadcaster.broadcast(entry));
