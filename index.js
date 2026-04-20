@@ -76,14 +76,19 @@ async function preflight404(url) {
 }
 
 async function processEntry(entry) {
+  // Helper: get the live queue entry, fall back to the snapshot we have.
+  // Entries can be evicted from RAM (MAX_ALL_SIZE cap) while a worker is mid-flight.
+  const get = () => queue.all.get(entry.id) || entry;
+
   queue.update(entry.id, { status: 'scanning' });
-  broadcaster.broadcast(queue.all.get(entry.id));
+  broadcaster.broadcast(get());
 
   // Skip dead deployments - saves URLScan credits and keeps feed clean
   if (await preflight404(entry.url)) {
     queue.update(entry.id, { status: '404' });
-    broadcaster.broadcast(queue.all.get(entry.id));
-    appendHistory(queue.all.get(entry.id));
+    const e404 = get();
+    broadcaster.broadcast(e404);
+    appendHistory(e404);
     return;
   }
 
@@ -112,7 +117,7 @@ async function processEntry(entry) {
       }
     };
     queue.update(entry.id, patch);
-    const updated = queue.all.get(entry.id);
+    const updated = get();
 
     writeEntry(undefined, {
       deployment: entry.url,
@@ -130,8 +135,9 @@ async function processEntry(entry) {
     }
 
     await sendWebhook(updated, WEBHOOK_URL);
-    broadcaster.broadcast(queue.all.get(entry.id));
-    appendHistory(queue.all.get(entry.id));
+    const finalFlagged = get();
+    broadcaster.broadcast(finalFlagged);
+    appendHistory(finalFlagged);
     return;
   }
 
@@ -167,17 +173,17 @@ async function processEntry(entry) {
   };
   queue.update(entry.id, patch);
 
-  // Screenshot: use URLScan's if suspicious (already captured), otherwise fetch our own
   if (status === 'suspicious') {
-    await sendWebhook(queue.all.get(entry.id), WEBHOOK_URL);
+    await sendWebhook(get(), WEBHOOK_URL);
     queue.update(entry.id, { screenshot: scan?.screenshot, screenshotSource: 'urlscan' });
   } else {
     const { screenshot, source } = await getScreenshot(entry.url);
     queue.update(entry.id, { screenshot, screenshotSource: source });
   }
 
-  broadcaster.broadcast(queue.all.get(entry.id));
-  appendHistory(queue.all.get(entry.id));
+  const final = get();
+  broadcaster.broadcast(final);
+  appendHistory(final);
 }
 
 // Worker pool
