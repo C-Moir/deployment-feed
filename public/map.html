@@ -54,10 +54,10 @@
   }
   #detail-close:hover { color: #ccc; }
 
-  /* Platform info modal */
+  /* Platform info panel — left side, mirrors detail panel on right */
   #platform-modal {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 340px; max-height: 70vh; background: rgba(8,8,20,0.96);
+    position: absolute; top: 50%; left: 20px; transform: translateY(-50%);
+    width: 300px; max-height: 72vh; background: rgba(8,8,20,0.96);
     border: 1px solid #2a2a4e; border-radius: 12px; padding: 20px;
     pointer-events: all; display: none; backdrop-filter: blur(12px);
     overflow: hidden; flex-direction: column; gap: 12px;
@@ -241,6 +241,9 @@ const STATUS_SIZE = {
 
 // Per-platform ring normal axes (computed from tilt) used for orbital animation
 const platformRingAxes = new Map();
+
+// Flagged-rate alerts per platform — updated from SSE stats events
+const planetAlerts = new Map(); // platformName → flaggedPct (0-100)
 
 // ─── Scene setup ─────────────────────────────────────────────────────────────
 
@@ -671,6 +674,11 @@ function connectSSE() {
       const stats = JSON.parse(e.data);
       document.getElementById('s-total').textContent = stats.totalSeen.toLocaleString();
       document.getElementById('s-flagged').textContent = stats.flaggedCount.toLocaleString();
+      // Update planet alert levels so the render loop can tint them
+      const ps = stats.platformStats || {};
+      for (const [name, p] of Object.entries(ps)) {
+        planetAlerts.set(name, p.flaggedPct || 0);
+      }
     } catch (_) {}
   });
   es.onerror = () => setTimeout(connectSSE, 3000);
@@ -723,6 +731,25 @@ function animate() {
   // Animate cluster lights
   clusterLights.forEach((light, i) => {
     light.intensity = 0.4 + Math.sin(t * 0.5 + i) * 0.2;
+  });
+
+  // Tint planets based on per-platform flagged rate
+  planetMeshes.forEach((mesh, name) => {
+    const pct = planetAlerts.get(name) || 0;
+    const platformDef = PLATFORMS.find(pl => pl.name === name);
+    if (pct >= 30) {
+      // Critical — pulse red
+      mesh.material.emissive.setHex(0xcc1111);
+      mesh.material.emissiveIntensity = 0.45 + Math.sin(t * 3) * 0.3;
+    } else if (pct >= 15) {
+      // Elevated — steady amber
+      mesh.material.emissive.setHex(0xaa5500);
+      mesh.material.emissiveIntensity = 0.3;
+    } else if (platformDef) {
+      // Normal — restore original colour
+      mesh.material.emissive.setHex(platformDef.color);
+      mesh.material.emissiveIntensity = 0.15;
+    }
   });
 
   // Hover detection (throttled)

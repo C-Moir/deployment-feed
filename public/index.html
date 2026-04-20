@@ -21,6 +21,19 @@
       padding: 2px 9px; font-size: 11px; color: #aaa;
     }
 
+    #alert-bar {
+      display: none; position: sticky; top: 45px; z-index: 99;
+      background: #1a0000; border-bottom: 1px solid #5a0000;
+      padding: 8px 20px; gap: 12px; align-items: center; flex-wrap: wrap;
+    }
+    #alert-bar.visible { display: flex; }
+    .alert-label { font-size: 12px; color: #ff4444; font-weight: 600; flex-shrink: 0; }
+    .alert-chip {
+      background: #2a0000; border: 1px solid #5a0000; border-radius: 12px;
+      padding: 2px 10px; font-size: 11px; color: #ff6666; white-space: nowrap;
+    }
+    .alert-chip.suspicious { background: #2a1400; border-color: #5a2800; color: #ff9944; }
+
     #filters {
       padding: 10px 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
       background: #0d0d18; border-bottom: 1px solid #1a1a2e;
@@ -132,6 +145,10 @@
   <div class="stat">Deploys/hr: <span id="stat-rate">0</span></div>
   <div class="stat">Flagged: <span id="stat-flagged">0</span> (<span id="stat-pct">0</span>%)</div>
   <div id="leaderboard"></div>
+</div>
+
+<div id="alert-bar">
+  <span class="alert-label">⚠ Platform alerts</span>
 </div>
 
 <div id="filters">
@@ -369,6 +386,22 @@ function renderStats(stats) {
       chip.textContent = `${tool}: ${count}`;
       lb.appendChild(chip);
     });
+
+  // Platform alert bar
+  const alertBar = document.getElementById('alert-bar');
+  const alerts = stats.platformAlerts || [];
+  // Remove old chips (keep the label)
+  [...alertBar.querySelectorAll('.alert-chip')].forEach(c => c.remove());
+  if (alerts.length) {
+    alertBar.classList.add('visible');
+    alerts.forEach(a => {
+      const chip = el('div', { class: `alert-chip${a.flaggedPct >= 30 ? '' : ' suspicious'}` });
+      chip.textContent = `${a.platform} ${a.flaggedPct}% flagged (${a.flagged + a.suspicious}/${a.total})`;
+      alertBar.appendChild(chip);
+    });
+  } else {
+    alertBar.classList.remove('visible');
+  }
 }
 
 document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
