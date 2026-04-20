@@ -262,8 +262,11 @@ app.get('/map', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'map.html'));
 });
 
+// Suppress favicon.ico 404s without shipping a binary asset
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
+
 app.listen(PORT, () => {
-  console.log(`vercel-feed running at http://localhost:${PORT}`);
+  console.log(`deployment-feed running at http://localhost:${PORT}`);
   if (!URLSCAN_KEY) console.log('[warn] URLSCAN_KEY not set - rate-limited scanning');
   if (!process.env.UPSTASH_REDIS_URL) console.log('[warn] Upstash not set - auto-reporting disabled');
 });
