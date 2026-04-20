@@ -132,6 +132,17 @@
     text-shadow: 0 0 12px rgba(100,100,255,0.8), 0 0 4px rgba(0,0,0,1);
     pointer-events: none; user-select: none;
   }
+  .platform-label.offline {
+    color: #444; text-shadow: none; font-weight: 400;
+  }
+  .platform-label.offline::after {
+    content: ' ·  offline'; font-size: 9px; color: #333;
+    letter-spacing: 1px; font-weight: 400;
+  }
+  .offline-notice {
+    background: #1a1000; border: 1px solid #3a2800; border-radius: 8px;
+    padding: 10px 12px; font-size: 11px; color: #886644; line-height: 1.5;
+  }
 </style>
 </head>
 <body>
@@ -239,6 +250,10 @@ const STATUS_SIZE = {
   '404':      0.15,
 };
 
+// Platforms that use wildcard certs — invisible to CT logs, dependent on crt.sh
+// which is currently returning 502 for wildcard queries. These planets are dimmed.
+const OFFLINE_PLATFORMS = new Set(['Vercel', 'Netlify', 'Surge', 'Glitch']);
+
 // Per-platform ring normal axes (computed from tilt) used for orbital animation
 const platformRingAxes = new Map();
 
@@ -313,17 +328,21 @@ PLATFORMS.forEach((p, i) => {
   platformRingAxes.set(p.name, axis);
 
   // Planet sphere — solid, prominent
+  const offline = OFFLINE_PLATFORMS.has(p.name);
   const planetGeom = new THREE.SphereGeometry(p.planetR, 32, 24);
   const planetMat = new THREE.MeshStandardMaterial({
-    color: p.color,
-    emissive: p.color,
-    emissiveIntensity: 0.15,
-    roughness: 0.6,
-    metalness: 0.3,
+    color: offline ? 0x222228 : p.color,
+    emissive: offline ? 0x111114 : p.color,
+    emissiveIntensity: offline ? 0.04 : 0.15,
+    roughness: offline ? 0.95 : 0.6,
+    metalness: offline ? 0.1 : 0.3,
+    transparent: offline,
+    opacity: offline ? 0.45 : 1.0,
   });
   const planet = new THREE.Mesh(planetGeom, planetMat);
   planet.position.copy(pos);
   planet.userData.platformName = p.name;
+  planet.userData.offline = offline;
   scene.add(planet);
   planetMeshes.set(p.name, planet);
 
@@ -332,7 +351,9 @@ PLATFORMS.forEach((p, i) => {
   const ringOuter = p.orbitR * 1.1;
   const ringGeom = new THREE.RingGeometry(ringInner, ringOuter, 64);
   const ringMat = new THREE.MeshBasicMaterial({
-    color: p.color, side: THREE.DoubleSide, transparent: true, opacity: 0.12,
+    color: offline ? 0x222228 : p.color,
+    side: THREE.DoubleSide, transparent: true,
+    opacity: offline ? 0.03 : 0.12,
   });
   const ring = new THREE.Mesh(ringGeom, ringMat);
   ring.position.copy(pos);
@@ -341,14 +362,14 @@ PLATFORMS.forEach((p, i) => {
   scene.add(ring);
 
   // Point light
-  const light = new THREE.PointLight(p.color, 3.0, 60);
+  const light = new THREE.PointLight(offline ? 0x222228 : p.color, offline ? 0.3 : 3.0, 60);
   light.position.copy(pos);
   scene.add(light);
   clusterLights.push(light);
 
   // Label above planet
   const div = document.createElement('div');
-  div.className = 'platform-label';
+  div.className = offline ? 'platform-label offline' : 'platform-label';
   div.textContent = p.name;
   const label = new CSS2DObject(div);
   label.position.copy(pos);
@@ -606,6 +627,7 @@ document.getElementById('platform-modal-close').addEventListener('click', hidePl
 
 function showPlatformModal(platformName) {
   const p = PLATFORMS.find(pl => pl.name === platformName);
+  const isOffline = OFFLINE_PLATFORMS.has(platformName);
   const entries = [...nodeMap.values()]
     .filter(n => n.entry.platform === platformName)
     .sort((a, b) => new Date(b.entry.timestamp) - new Date(a.entry.timestamp));
@@ -614,14 +636,19 @@ function showPlatformModal(platformName) {
 
   const nameEl = document.getElementById('platform-modal-name');
   nameEl.textContent = platformName;
-  nameEl.style.color = '#' + (p?.color || 0x6c63ff).toString(16).padStart(6, '0');
+  nameEl.style.color = isOffline ? '#555' : '#' + (p?.color || 0x6c63ff).toString(16).padStart(6, '0');
   document.getElementById('pm-count').textContent = entries.length;
   document.getElementById('pm-flagged').textContent = flagged;
 
   const list = document.getElementById('platform-modal-list');
   list.textContent = '';
 
-  if (!entries.length) {
+  if (isOffline) {
+    const notice = document.createElement('div');
+    notice.className = 'offline-notice';
+    notice.textContent = '⚠ Data source offline — ' + platformName + ' uses wildcard TLS certs, making individual deployments invisible to CT log monitoring. Coverage resumes automatically when crt.sh wildcard queries recover.';
+    list.appendChild(notice);
+  } else if (!entries.length) {
     const empty = document.createElement('div');
     empty.style.cssText = 'color:#333;font-size:11px;padding:12px 0;text-align:center';
     empty.textContent = 'No deployments detected yet';
@@ -733,8 +760,9 @@ function animate() {
     light.intensity = 0.4 + Math.sin(t * 0.5 + i) * 0.2;
   });
 
-  // Tint planets based on per-platform flagged rate
+  // Tint planets based on per-platform flagged rate (skip offline planets)
   planetMeshes.forEach((mesh, name) => {
+    if (mesh.userData.offline) return;
     const pct = planetAlerts.get(name) || 0;
     const platformDef = PLATFORMS.find(pl => pl.name === name);
     if (pct >= 30) {
