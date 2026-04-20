@@ -12,9 +12,10 @@ const { connect: connectGitHubPages } = require('./lib/github-pages.js');
 const { checkUrlhaus, submitUrlscan, pollUrlscan, extractScanData } = require('./lib/scanner.js');
 const { writeEntry } = require('./lib/threat-intel.js');
 const { recordAndCheck, buildMailtoLink } = require('./lib/upstash.js');
-const { getScreenshot } = require('./lib/screenshot.js');
+const { getScreenshot, closeBrowser } = require('./lib/screenshot.js');
 const { fetchFavicon, fetchDom, extractTitle, extractMetaDescription } = require('./lib/metadata.js');
 const { detectAiTool, detectFramework, detectContentTags, detectSuspiciousHostname } = require('./lib/fingerprint.js');
+const novelty = require('./lib/novelty.js');
 const { Broadcaster } = require('./lib/broadcaster.js');
 const { computeStats, detectTrending } = require('./lib/stats.js');
 const { sendWebhook } = require('./lib/webhook.js');
@@ -181,7 +182,29 @@ async function processEntry(entry) {
   const final = get();
   broadcaster.broadcast(final);
   appendHistory(final);
+
+  // Kick off a crt.sh lookup in the background — if this hostname has only one
+  // cert ever, it's genuinely new; 2+ means it's a 90-day LE renewal.
+  const cached = novelty.classify(entry.hostname);
+  if (cached) {
+    queue.update(entry.id, { novelty: cached });
+    broadcaster.broadcast(get());
+  } else {
+    queue.update(entry.id, { novelty: 'checking' });
+    broadcaster.broadcast(get());
+  }
 }
+
+// When a novelty verdict arrives, patch the matching entry and re-broadcast.
+// Entries are matched by hostname since the worker result lacks an id.
+novelty.onClassified(({ hostname, verdict }) => {
+  for (const entry of queue.all.values()) {
+    if (entry.hostname === hostname && entry.novelty !== verdict) {
+      queue.update(entry.id, { novelty: verdict });
+      broadcaster.broadcast(entry);
+    }
+  }
+});
 
 // Worker pool
 async function runWorker() {
@@ -248,6 +271,7 @@ app.get('/api/history', (req, res) => {
       screenshotSource: e.screenshotSource || null,
       scan: e.scan || null,
       contentTags: e.contentTags || null,
+      novelty: e.novelty || null,
     }));
   const combined = [...mem, ...disk]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -270,6 +294,15 @@ app.listen(PORT, () => {
   if (!URLSCAN_KEY) console.log('[warn] URLSCAN_KEY not set - rate-limited scanning');
   if (!process.env.UPSTASH_REDIS_URL) console.log('[warn] Upstash not set - auto-reporting disabled');
 });
+
+// Tidy shutdown — chromium is expensive to leave dangling
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    console.log(`[exit] ${sig} received, closing browser`);
+    await closeBrowser();
+    process.exit(0);
+  });
+}
 
 setInterval(() => {
   broadcaster.broadcastStats(computeStats(queue.getAll()));

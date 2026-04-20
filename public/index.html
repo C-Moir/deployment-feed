@@ -103,6 +103,9 @@
     .badge.tag-blog     { background: #001a1a; color: #22d3ee; border-color: #003a3a; }
     .badge.tag-adult    { background: #2a0000; color: #f87171; border-color: #5a0000; }
     .badge.tag-template { background: #111111; color: #6b7280; border-color: #222222; }
+    .badge.novelty-new      { background: #002040; color: #60a5fa; border-color: #003a6e; }
+    .badge.novelty-renewal  { background: #1a1a22; color: #555;   border-color: #2a2a32; }
+    .badge.novelty-checking { background: #111;    color: #333;   border-color: #1a1a1a; }
 
     #tag-filters {
       padding: 6px 20px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
@@ -155,6 +158,7 @@
 <div id="filters">
   <button class="filter-btn active" data-filter="all">All</button>
   <button class="filter-btn" data-filter="interesting">✨ Interesting</button>
+  <button class="filter-btn" data-novelty-toggle="new">🆕 New only</button>
   <button class="filter-btn" data-filter="previews">Previews</button>
   <button class="filter-btn" data-filter="clean">Clean</button>
   <button class="filter-btn" data-filter="suspicious">Suspicious</button>
@@ -192,6 +196,7 @@ const entries = new Map();
 let activeFilter = 'all';
 let activeTag = null;
 let searchQuery = '';
+let newOnly = false;
 
 const TAG_META = {
   'crypto':    { label: 'Crypto',    emoji: '🪙' },
@@ -238,6 +243,7 @@ function buildCard(entry) {
     'data-title': (entry.meta?.title || '').toLowerCase(),
     'data-has-screenshot': entry.screenshot ? '1' : '0',
     'data-tags': tags.join(' '),
+    'data-novelty': entry.novelty || '',
   });
 
   // Screenshot — only show for non-flagged or if it's a URLScan URL (sandboxed)
@@ -268,6 +274,9 @@ function buildCard(entry) {
 
   const badges = el('div', { class: 'badges' });
   badges.appendChild(badge(entry.status, statusClass(entry.status)));
+  if (entry.novelty === 'new')      badges.appendChild(badge('new',      'novelty-new'));
+  else if (entry.novelty === 'renewal')  badges.appendChild(badge('renewal',  'novelty-renewal'));
+  else if (entry.novelty === 'checking') badges.appendChild(badge('checking', 'novelty-checking'));
   if (entry.platform) badges.appendChild(badge(entry.platform, 'platform'));
   if (entry.framework) badges.appendChild(badge(entry.framework, 'framework'));
   if (entry.aiTool) badges.appendChild(badge(entry.aiTool, 'ai-tool'));
@@ -374,11 +383,12 @@ function applyFilters() {
       activeFilter === 'all'         ? s !== '404' :
       s === activeFilter;
     const matchTag = !activeTag || (card.dataset.tags || '').split(' ').includes(activeTag);
+    const matchNovelty = !newOnly || card.dataset.novelty === 'new';
     const matchSearch = !searchQuery
       || card.dataset.hostname.includes(searchQuery)
       || card.dataset.title.includes(searchQuery)
       || card.dataset.platform.includes(searchQuery);
-    const show = matchFilter && matchTag && matchSearch;
+    const show = matchFilter && matchTag && matchNovelty && matchSearch;
     card.style.display = show ? '' : 'none';
     if (show) visible++;
   });
@@ -439,6 +449,14 @@ document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
     document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeFilter = btn.dataset.filter;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll('.filter-btn[data-novelty-toggle]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    newOnly = !newOnly;
+    btn.classList.toggle('active', newOnly);
     applyFilters();
   });
 });
